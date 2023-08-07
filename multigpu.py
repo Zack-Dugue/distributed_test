@@ -18,7 +18,9 @@ def ddp_setup(rank, world_size):
     """
     os.environ["MASTER_ADDR"] = "localhost"
     os.environ["MASTER_PORT"] = "12355"
+    print("initializing process group backend")
     init_process_group(backend="nccl", rank=rank, world_size=world_size)
+    print(f"the current rank is {rank}")
     torch.cuda.set_device(rank)
 
 class Trainer:
@@ -30,11 +32,14 @@ class Trainer:
         gpu_id: int,
         save_every: int,
     ) -> None:
+        print(f"Trainer gpu_id : {gpu_id}")
         self.gpu_id = gpu_id
+        print(f"moving model to gpu ID")
         self.model = model.to(gpu_id)
         self.train_data = train_data
         self.optimizer = optimizer
         self.save_every = save_every
+        print("Casting model to DDP")
         self.model = DDP(model, device_ids=[gpu_id])
 
     def _run_batch(self, source, targets):
@@ -67,13 +72,17 @@ class Trainer:
 
 
 def load_train_objs():
+    print("making train dataset")
     train_set = MyTrainDataset(2048)  # load your dataset
+    print("making training model")
     model = torch.nn.Linear(20, 1)  # load your model
+    print("making optimizer")
     optimizer = torch.optim.SGD(model.parameters(), lr=1e-3)
     return train_set, model, optimizer
 
 
 def prepare_dataloader(dataset: Dataset, batch_size: int):
+    print("returing a dataloader with a distributed sampler")
     return DataLoader(
         dataset,
         batch_size=batch_size,
@@ -84,12 +93,21 @@ def prepare_dataloader(dataset: Dataset, batch_size: int):
 
 
 def main(rank: int, world_size: int, save_every: int, total_epochs: int, batch_size: int):
+    print(f"rank is : {rank}")
+    print(f"world size is : {world_size}")
+    print("setting up ddp)"
     ddp_setup(rank, world_size)
+    print("loading traning objects")
     dataset, model, optimizer = load_train_objs()
+    print("preparing dataloader")
     train_data = prepare_dataloader(dataset, batch_size)
+    print("Initializing Trainer")
     trainer = Trainer(model, train_data, optimizer, rank, save_every)
+    print("Beginning Training")
     trainer.train(total_epochs)
+    print("End of Training, Destroying process group")
     destroy_process_group()
+    print("end of program")
 
 
 if __name__ == "__main__":
